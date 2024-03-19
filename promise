@@ -66,4 +66,102 @@
   这其实是一个观察者模式，then 方法的 this.onFulfilledCallbacks.push(onFulfilled) 和 this.onRejectedCallbacks.push(onRejected) 就是在添加订阅者，而 resolve 和 reject 方法就是在通知所有的订阅者。
 
 2. then 方法的链式调用
-    
+
+    <script>
+      const PENDING = 'pengding';
+      const FULFILLED = 'fulfilled';
+      const REJECTED = 'rejected';
+
+      class SelPromise {
+        // 保存 onFulfilled 回调函数
+        onFulfilledCallback = [];
+        // 保存 onRejected 回调函数
+        onRejectedCallback = [];
+        // 储存状态，初始值是 pending
+        status = PENDING;
+        // 成功之后的值
+        value = null;
+        // 失败之后的原因
+        reason = null;
+        
+        constructor(executor) {
+          // 将 resolve 和 reject 传给 new Promsie 的回调函数
+          executor(this.resolve, this.reject) 
+        }
+
+        // 箭头函数可以函数里面的 this 始终指向 Promise 实例对象
+        resolve = (value) => {
+          if (this.status === PENDING) {
+            this.status = FULFILLED;
+            this.value = value;
+            // 执行 onFulfilled 回调函数
+            this.onFulfilledCallback.forEach((fn) => fn(value));
+          }
+        }
+
+        reject = (reason) => {
+          // 只有状态是 pending 的情况下，才改变为 rejected 状态
+          if (this.status === PENDING) {
+            this.status = REJECTED;
+            this.reason = reason;
+            // 执行 onRejected 回调函数
+            this.onRejectedCallback.forEach((fn) => fn(value));
+          }
+        }
+
+        then(onFulfilled, onRejected) {
+          const promise2 = new SelPromise((resolve, reject) => {
+            if (this.status === FULFILLED) {
+              // 获取上一个 then 方法的 fulfilled 回调函数的返回值
+              const v = onFulfilled(this.value);
+              // 根据返回值，改变 promise2 的状态，并建立与下一个 then 方法的关系
+              resolvePromise(promise2, v, resolve, reject)
+            } else if (this.status === REJECTED) {
+              // 获取上一个 then 方法的 rejected 回调函数的返回值
+              const v = onRejected(this.reason);
+              //根据返回值，改变 promise2 的状态，并建立与下一个 then 方法的关系
+              resolvePromise(promise2, v, resolve, reject);
+            } else {
+              // pending 状态下保存回调函数
+              this.onFulfilledCallback.push(onFulfilled);
+              this.onRejectedCallback.push(onRejected);
+            }
+          })
+          return promise2;
+        }
+      }
+
+      function resolvePromise(promise2, value, resolve, reject) {
+        // 如果 then 方法返回的是自身 Promise 对象，返回错误信息
+        if (promise2 === value) {
+          return reject(new TypeError('Chaining cycle detected for promise #<Promise>'));
+        }
+        if (typeof value === "object" || typeof value === "function") {
+          if (value === null) {
+            // 如果返回值是 null，
+            // 直接调用 resolve 函数，promise2 的状态变为 fulfilled，
+            // 返回值由下一个 then 方法的第一个回调函数接收。
+            return resolve(value);
+          }
+          try {
+            if (typeof value.then === "function") {
+                // 如果返回值是 Promise 对象或者 thenable 对象
+                // 那就只能交给它们的 then 方法来改变 promise2 的状态，以及获取相对应的状态值
+                // 以下代码等同于 value.then((value) => resolve(value), (err) => reject(err))
+                value.then(resolve, reject);
+            } else {
+                // 如果 then 不是函数，同 null 情况一样的处理逻辑。
+                resolve(value);
+            }
+          } catch (error) {
+            // 出现异常的情况下，调用 reject 函数
+            // promise2 的状态变为 rejected，
+            // 错误信息由下一个 then 方法的第二回调函数接收
+            reject(error);
+          }
+        } else {
+          // 如果返回值是其他对象或者原始数据类型值，同 null 情况一样的处理逻辑。
+          resolve(value);
+        }
+      }
+    </script>
